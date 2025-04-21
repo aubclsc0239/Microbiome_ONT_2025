@@ -5,7 +5,127 @@ date: "2025-04-21"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+
+```{r setup, include = FALSE}
+# color blind pallet
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
 ```
+
+### load in our files from the HPC or formatted epi2me output for input into phyloseq. 
+
+```{r setup, include = FALSE}
+tax.path <- file.choose() # "/Users/abdulmalikoladipupo/Downloads/EXP242301_ONT/OUTPUT/for test/Taxa_file.csv"
+tax <- read.delim(tax.path, header = T, row.names = 1, sep = ",")
+head(tax)
+tax$OTU <- rownames(tax)
+TAX.bacteria <- phyloseq::tax_table(as.matrix(tax))
+
+```
+
+```{r}
+#OTU table 
+table.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/otu_table_16s_UPARSE.csv"
+table <- read.csv(table.path)
+rownames(table) <- table$OTU
+table <- table[,-1]
+OTU.bacteria <- phyloseq::otu_table(table, taxa_are_rows = TRUE)
+
+```
+
+```{r}
+#Meta data 
+samples.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/soil_prok_map.csv"
+samples <- read.csv(samples.path)
+rownames(samples) <- samples$SampleID #row names must match OTU table headers
+SAMP.bacteria <- phyloseq::sample_data(samples)
+```
+
+```{r}
+#fasta file
+fasta.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/otus_16s.fasta"
+FASTA.bacteria <- Biostrings::readDNAStringSet(fasta.path, format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+```
+
+```{r}
+#Phylogeny
+tree.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/otus_phylogeny.nwk"
+tree <- phyloseq::read_tree(tree.path)
+```
+
+```{r}
+phyloseq.start <- phyloseq(SAMP.bacteria, TAX.bacteria, OTU.bacteria, FASTA.bacteria, tree)
+
+phyloseq.start@otu_table # the OTU table
+phyloseq.start@tax_table # the taxonomy table
+phyloseq.start@sam_data # the metadata
+phyloseq.start@refseq # the sequences 
+phyloseq.start@phy_tree # the tree
+
+phyloseq.start
+```
+
+```{r}
+# removing chloroplast or taxa not assigned at the domain level
+physeq.no.chloro <- phyloseq.start %>% subset_taxa(Class!= "Chloroplast" & Dormain!= "unidentified")
+physeq.no.chloro
+
+# Now lets look at the read distribution per sample and decide if we need to get rid of some samples because of low sequence depth
+# a good general rule of thumb is samples below 1000 reads could be eliminated, although this isn't a hard rule, you can remove at 10,000 or more if you want
+sort(sample_sums(physeq.no.chloro), decreasing = T) # read distribution
+
+# how many total reads are we now working with?
+sum(sample_sums(physeq.no.chloro))
+
+# What is our mean and median read depth per sample? 
+mean(sample_sums(physeq.no.chloro))
+
+median(sample_sums(physeq.no.chloro))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
