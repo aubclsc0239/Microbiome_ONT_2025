@@ -5,6 +5,47 @@ date: "2025-04-21"
 output: html_document
 ---
 
+### Install and Load all required packages
+```{r}
+# Check and install missing packages only
+required_packages <- c(
+    "vegan", "phyloseq", "Biostrings", "metagenomeSeq", 
+    "decontam", "indicspecies", "DESeq2", "ggpubr", "tidyverse", 
+    "ggplot2", "dunn.test", "writexl", "pairwiseAdonis", "remotes", 
+    "cluster", "devtools", "statmod", "gtools", "BiocStyle", "DECIPHER", "phangorn", "gridExtra"
+)
+
+# Install missing packages
+for (pkg in required_packages) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+        cat("Installing missing package:", pkg, "\n")
+        if (pkg %in% c("vegan", "phyloseq", "Biostrings", "metagenomeSeq", 
+                       "decontam", "indicspecies", "DESeq2", "ggpubr", "BiocStyle", "DECIPHER", "phangorn")) {
+            BiocManager::install(pkg, lib = "~/R/library")
+        } else {
+            install.packages(pkg, repos = "http://cran.us.r-project.org", lib = "~/R/library")
+        }
+    }
+}
+
+# Load libraries
+library("vegan")
+library("phyloseq")
+library("Biostrings")
+library("metagenomeSeq")
+library("decontam")
+library("indicspecies")
+library("DESeq2")
+library("ggpubr")
+library("tidyverse")
+library("ggplot2")
+library("dunn.test")
+library("writexl")
+library("pairwiseAdonis")
+library("cluster")
+library("devtools")
+```
+
 ### Set up color pallet to use through this analysis
 ```{r setup, include = FALSE}
 # color blind pallet
@@ -17,8 +58,8 @@ cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2"
 taxa <- read.csv("R_data/Taxa_file.csv", header = TRUE, row.names = 1, na.strings = "na")
 otu.table <- read.csv("R_data/OTU_table_16s.csv", na.strings = "na")
 metadata <- read.csv("R_data/metadata_test.csv", na.strings = "na")
-tree.path <- "R_data/tree.nwk"
-fasta.path <- "R_data/fasta_file.fasta"
+tree.read <- "R_data/tree.nwk"
+fasta.read <- "R_data/fasta_file.fasta"
 ```
 
 ### Format all CSV input data to ensure match rows and column
@@ -32,96 +73,59 @@ rownames(metadata) <- metadata$SampleID #row names must match OTU table headers
 
 ### Load all file into phyloseq
 ```{r}
-TAX.bacteria <- phyloseq::tax_table(as.matrix(tax))
-OTU.bacteria <- phyloseq::otu_table(table, taxa_are_rows = TRUE)
-SAMP.bacteria <- phyloseq::sample_data(samples)
-tree <- phyloseq::read_tree(tree.path)
-phyloseq.start <- phyloseq(SAMP.bacteria, TAX.bacteria, OTU.bacteria, FASTA.bacteria, tree)
+phy.tax <- phyloseq::tax_table(as.matrix(taxa))
+phy.OTU.table <- phyloseq::otu_table(otu.table, taxa_are_rows = TRUE)
+phy.data <- phyloseq::sample_data(metadata)
+phy.fasta <- Biostrings::readDNAStringSet(fasta.read, format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+phy.tree <- phyloseq::read_tree(tree.read)
 
+phyloseq.data <- phyloseq(phy.tax, phy.OTU.table, phy.data, phy.fasta, phy.tree)
 
+```
+### Samples quality control and read distribution
 
-j_ps <- phyloseq(otu_table(j_seqtab.nochim, taxa_are_rows=FALSE), 
-                sample_data(j_samdf), 
-                tax_table(j_taxa),phy_tree(j_fitGTR$tree))
+```{r}
+# filter out taxa that have non-zero abundance in less than 2 samples
+ps.clean <- filter_taxa(phyloseq.data, function (x) {sum(x > 0) >= 2}, prune=TRUE)
+# see read distribution from the highest to lowest
+sort(sample_sums(ps.clean), decreasing = T) # read distribution
+# check total reads
+sum(sample_sums(ps.clean))
+# chech mean read 
+mean(sample_sums(ps.clean))
+# median read
+median(sample_sums(ps.clean))
+```
 
+### Analysis and Visualization
+
+#### ALPHA DIVERSITY
+
+```{r}
+# Estimate multiple richness measures at once
+alpha_diversity <- estimate_richness(ps.clean, measures = c("Shannon", "InvSimpson", "Observed"))
+
+# Add the measures to the sample data
+ps.clean@sam_data$shannon <- alpha_diversity$Shannon
+ps.clean@sam_data$invsimpson <- alpha_diversity$InvSimpson
+ps.clean@sam_data$richness <- alpha_diversity$Observed
+
+# Compute evenness (Shannon / log(richness))
+ps.clean@sam_data$even <- ps.clean@sam_data$shannon / log(ps.clean@sam_data$richness)
 ```
 
 ```{r}
-#OTU table 
-table.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/otu_table_16s_UPARSE.csv"
-table <- read.csv(table.path)
-rownames(table) <- table$OTU
-table <- table[,-1]
-OTU.bacteria <- phyloseq::otu_table(table, taxa_are_rows = TRUE)
-
-```
-
-```{r}
-#Meta data 
-samples.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/soil_prok_map.csv"
-samples <- read.csv(samples.path)
-rownames(samples) <- samples$SampleID #row names must match OTU table headers
-SAMP.bacteria <- phyloseq::sample_data(samples)
-```
-
-```{r}
-#fasta file
-fasta.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/otus_16s.fasta"
-FASTA.bacteria <- Biostrings::readDNAStringSet(fasta.path, format="fasta", seek.first.rec=TRUE, use.names=TRUE)
-```
-
-```{r}
-#Phylogeny
-tree.path <- file.choose() # "/Users/zacharynoel/Library/CloudStorage/Box-Box/Auburn/Teaching/Omics in Agriculture/Lab 10 - Microbiome 2/otus_phylogeny.nwk"
-tree <- phyloseq::read_tree(tree.path)
-```
-
-```{r}
-phyloseq.start <- phyloseq(SAMP.bacteria, TAX.bacteria, OTU.bacteria, FASTA.bacteria, tree)
-
-phyloseq.start@otu_table # the OTU table
-phyloseq.start@tax_table # the taxonomy table
-phyloseq.start@sam_data # the metadata
-phyloseq.start@refseq # the sequences 
-phyloseq.start@phy_tree # the tree
-
-phyloseq.start
-```
-
-```{r}
-# removing chloroplast or taxa not assigned at the domain level
-physeq.no.chloro <- phyloseq.start %>% subset_taxa(Class!= "Chloroplast" & Dormain!= "unidentified")
-physeq.no.chloro
-
-# Now lets look at the read distribution per sample and decide if we need to get rid of some samples because of low sequence depth
-# a good general rule of thumb is samples below 1000 reads could be eliminated, although this isn't a hard rule, you can remove at 10,000 or more if you want
-sort(sample_sums(physeq.no.chloro), decreasing = T) # read distribution
-
-# how many total reads are we now working with?
-sum(sample_sums(physeq.no.chloro))
-
-# What is our mean and median read depth per sample? 
-mean(sample_sums(physeq.no.chloro))
-
-median(sample_sums(physeq.no.chloro))
-```
-
-
-```{r}
-# ALPHA DIVERSITY
-physeq.no.chloro@sam_data$shannon <- estimate_richness(physeq.no.chloro, measures=c("Shannon"))$Shannon
-physeq.no.chloro@sam_data$invsimpson <- estimate_richness(physeq.no.chloro, measures=c("InvSimpson"))$InvSimpson
-physeq.no.chloro@sam_data$richness <- estimate_richness(physeq.no.chloro, measures=c("Observed"))$Observed
-physeq.no.chloro@sam_data$even <- physeq.no.chloro@sam_data$shannon/log(physeq.no.chloro@sam_data$richness)
-
-sample.data.bac <- data.frame(physeq.no.chloro@sam_data)
-# Save sample.data.bac to Excel file
-write_xlsx(sample.data.bac, path = "output_dataFile.xlsx")
-
+# extract data from phyloseq object into a dataframe
+sample.df <- data.frame(ps.clean@sam_data)
 # arrange order
-sample.data.bac$treatment <- factor(sample.data.bac$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
-
+sample.df$treatment <- factor(sample.df$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
 ```
+
+
+
+
+
+
 
 ```{r}
 # Shannon diversity by time*treatment interaction
