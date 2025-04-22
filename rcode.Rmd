@@ -5,21 +5,44 @@ date: "2025-04-21"
 output: html_document
 ---
 
-
+### Set up color pallet to use through this analysis
 ```{r setup, include = FALSE}
 # color blind pallet
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
-
 ```
 
-### load in our files from the HPC or formatted epi2me output for input into phyloseq. 
+### Load in all required formatted files from the HPC or formatted epi2me output. 
 
 ```{r setup, include = FALSE}
-tax.path <- file.choose() # "/Users/abdulmalikoladipupo/Downloads/EXP242301_ONT/OUTPUT/for test/Taxa_file.csv"
-tax <- read.delim(tax.path, header = T, row.names = 1, sep = ",")
-head(tax)
-tax$OTU <- rownames(tax)
+taxa <- read.csv("R_data/Taxa_file.csv", header = TRUE, row.names = 1, na.strings = "na")
+otu.table <- read.csv("R_data/OTU_table_16s.csv", na.strings = "na")
+metadata <- read.csv("R_data/metadata_test.csv", na.strings = "na")
+tree.path <- "R_data/tree.nwk"
+fasta.path <- "R_data/fasta_file.fasta"
+```
+
+### Format all CSV input data to ensure match rows and column
+```{r}
+taxa$OTU <- rownames(taxa)
+rownames(otu.table) <- otu.table$OTU
+otu.table <- otu.table[,-1]
+rownames(metadata) <- metadata$SampleID #row names must match OTU table headers
+```
+
+
+### Load all file into phyloseq
+```{r}
 TAX.bacteria <- phyloseq::tax_table(as.matrix(tax))
+OTU.bacteria <- phyloseq::otu_table(table, taxa_are_rows = TRUE)
+SAMP.bacteria <- phyloseq::sample_data(samples)
+tree <- phyloseq::read_tree(tree.path)
+phyloseq.start <- phyloseq(SAMP.bacteria, TAX.bacteria, OTU.bacteria, FASTA.bacteria, tree)
+
+
+
+j_ps <- phyloseq(otu_table(j_seqtab.nochim, taxa_are_rows=FALSE), 
+                sample_data(j_samdf), 
+                tax_table(j_taxa),phy_tree(j_fitGTR$tree))
 
 ```
 
@@ -84,14 +107,74 @@ median(sample_sums(physeq.no.chloro))
 ```
 
 
+```{r}
+# ALPHA DIVERSITY
+physeq.no.chloro@sam_data$shannon <- estimate_richness(physeq.no.chloro, measures=c("Shannon"))$Shannon
+physeq.no.chloro@sam_data$invsimpson <- estimate_richness(physeq.no.chloro, measures=c("InvSimpson"))$InvSimpson
+physeq.no.chloro@sam_data$richness <- estimate_richness(physeq.no.chloro, measures=c("Observed"))$Observed
+physeq.no.chloro@sam_data$even <- physeq.no.chloro@sam_data$shannon/log(physeq.no.chloro@sam_data$richness)
+
+sample.data.bac <- data.frame(physeq.no.chloro@sam_data)
+# Save sample.data.bac to Excel file
+write_xlsx(sample.data.bac, path = "output_dataFile.xlsx")
+
+# arrange order
+sample.data.bac$treatment <- factor(sample.data.bac$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
+
+```
+
+```{r}
+# Shannon diversity by time*treatment interaction
+shan.treatment.time <- ggplot(sample.data.bac, aes(x = treatment, y = shannon, fill = treatment)) + 
+  geom_boxplot() +
+  #geom_jitter() + 
+  ylab("Shannon") + 
+  stat_compare_means(method = "") + 
+  xlab("")+
+  theme_bw() +
+  facet_wrap(~day) +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
+        axis.text.y = element_text(size = 12),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.line = element_line(size = 0.6),
+        legend.text = element_text(size = 12),    # Adjust legend text size
+        legend.title = element_text(size = 16))     # Adjust legend title size
+shan.treatment.time
+
+```
+
+```{r}
+shan_trt_time <- aov(shannon ~ treatment*day, data = sample.data.bac)
+anova_table <- anova(shan_trt_time) 
+print(anova_table) #treatment=0.076, day=0.391, inter=0.928
+tukey_results <- TukeyHSD(shan_trt_time)
+print(tukey_results)
+```
 
 
+```{r}
+# fecal samples relative amount/treatment*time
+top20 <- names(sort(taxa_sums(physeq.no.chloro), decreasing=TRUE))[1:12]
+ps.top20 <- transform_sample_counts(physeq.no.chloro, function(OTU) OTU/sum(OTU))
+ps.top20 <- prune_taxa(top20, ps.top20)
+dat.dataframe <- psmelt(ps.top20)
+dat.agr <- aggregate(Abundance ~ treatment*day + Species, data = dat.dataframe, FUN = mean)
+rel_abun_treatment <-ggplot(dat.agr, aes(x = treatment, y = Abundance, fill = Phylum)) +
+  facet_wrap(~day) +
+  geom_bar(stat = "identity", position = "fill") +
+  theme_classic() +
+  labs(title = "",
+       x = "Treatments",
+       y = "Relative Abundance") +
+  theme(axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 12, face = "bold"),
+        axis.title.y = element_text(size = 15, face = "bold"),
+        axis.title.x = element_text(size = 15, face = "bold"),
+        legend.text = element_text(size = 12),    # Adjust legend text size
+        legend.title = element_text(size = 15))     # Adjust legend title size 
 
-
-
-
-
-
+rel_abun_treatment
+```
 
 
 
