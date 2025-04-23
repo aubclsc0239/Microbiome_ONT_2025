@@ -2,11 +2,13 @@
 title: "Microbiome"
 author: "Abdulmalik_Oladipupo"
 date: "2025-04-21"
-output: html_document
+output: 
+   html_document:
+     toc: true
 ---
 
 ### Install and Load all required packages
-```{r}
+```{r setup}
 # Check and install missing packages only
 required_packages <- c(
     "vegan", "phyloseq", "Biostrings", "metagenomeSeq", 
@@ -51,7 +53,7 @@ library("devtools")
 ```
 
 ### Set up color pallet to use through this analysis F0E442
-```{r setup, include = FALSE}
+```{r}
 # color blind pallet
 cbbPalette <- c("#D55E00", "#8C6D3B", "#56B4E9", "#008000", "#000000", 
                 "#0072B2", "#009E73", "#CC79A7", "#F1A7B6", "#1F77B4", 
@@ -60,7 +62,7 @@ cbbPalette <- c("#D55E00", "#8C6D3B", "#56B4E9", "#008000", "#000000",
 
 ### Load in all required formatted files from the HPC or formatted epi2me output. 
 
-```{r setup, include = FALSE}
+```{r set, include = FALSE}
 taxa <- read.csv("R_data/Taxa_file.csv", header = TRUE, row.names = 1, na.strings = "na")
 otu.table <- read.csv("R_data/OTU_table_16s.csv", na.strings = "na")
 metadata <- read.csv("R_data/metadata_test.csv", na.strings = "na")
@@ -113,6 +115,7 @@ ps.top20 <- transform_sample_counts(ps.clean, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
 dat.dataframe <- psmelt(ps.top20)
 dat.agr <- aggregate(Abundance ~ treatment*day + Species + genus + Phylum, data = dat.dataframe, FUN = mean)
+dat.agr$treatment <- factor(dat.agr$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
 rel_abun_treatment <-ggplot(dat.agr, aes(x = treatment, y = Abundance, fill = Species)) +
   facet_wrap(~day) +
   geom_bar(stat = "identity", position = "fill") +
@@ -261,8 +264,26 @@ shan.trt.time <- aov(shannon ~ treatment*day, data = sample.df)
 summary(shan.trt.time) #treatment=0.020, day=3.02e-05, inter=0.012
 
 ```
+### Publication figure
+```{r}
+# Arrange Alpha diversity plots into a single figure
+AlphaFig <- ggarrange(richness.treatment.time, 
+                     even.treatment.time, 
+                     shannon.treatment.time, 
+                     labels = "auto", 
+                     nrow = 3, ncol = 1, 
+                     common.legend = TRUE)
+
+ggsave("AlphaFig.tiff", dpi=300, width = 27, height = 23, units = "cm")
+
+AbunFig <- ggarrange(rel_abun_treatment, nrow = 1)
+ggsave("AbunFig.tiff", dpi=300, width = 32, height = 15, units = "cm")
 
 
+
+
+
+```
 
 
 
