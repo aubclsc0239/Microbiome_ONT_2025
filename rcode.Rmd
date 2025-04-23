@@ -11,7 +11,7 @@ output: html_document
 required_packages <- c(
     "vegan", "phyloseq", "Biostrings", "metagenomeSeq", 
     "decontam", "indicspecies", "DESeq2", "ggpubr", "tidyverse", 
-    "ggplot2", "dunn.test", "writexl", "pairwiseAdonis", "remotes", 
+    "ggplot2", "dunn.test", "writexl", "pairwiseAdonis", "remotes", "emmeans", "multcompView", 
     "cluster", "devtools", "statmod", "gtools", "BiocStyle", "DECIPHER", "phangorn", "gridExtra"
 )
 
@@ -41,15 +41,21 @@ library("tidyverse")
 library("ggplot2")
 library("dunn.test")
 library("writexl")
+library("lme4")
+library("emmeans")
+library("multcomp")
+library("multcompView")
 library("pairwiseAdonis")
 library("cluster")
 library("devtools")
 ```
 
-### Set up color pallet to use through this analysis
+### Set up color pallet to use through this analysis F0E442
 ```{r setup, include = FALSE}
 # color blind pallet
-cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+cbbPalette <- c("#D55E00", "#8C6D3B", "#56B4E9", "#008000", "#000000", 
+                "#0072B2", "#009E73", "#CC79A7", "#F1A7B6", "#1F77B4", 
+                "#8C564B", "#2CA02C", "#FF7F0E", "#9467BD", "#E69F00")
 ```
 
 ### Load in all required formatted files from the HPC or formatted epi2me output. 
@@ -97,10 +103,35 @@ mean(sample_sums(ps.clean))
 median(sample_sums(ps.clean))
 ```
 
-### Analysis and Visualization
+## ANALYSIS AND VISUALIZATION
 
-#### ALPHA DIVERSITY
+### Relative Abundance Plot
+```{r}
+# fecal samples relative amount/treatment*time
+top20 <- names(sort(taxa_sums(ps.clean), decreasing=TRUE))[1:10]
+ps.top20 <- transform_sample_counts(ps.clean, function(OTU) OTU/sum(OTU))
+ps.top20 <- prune_taxa(top20, ps.top20)
+dat.dataframe <- psmelt(ps.top20)
+dat.agr <- aggregate(Abundance ~ treatment*day + Species + genus + Phylum, data = dat.dataframe, FUN = mean)
+rel_abun_treatment <-ggplot(dat.agr, aes(x = treatment, y = Abundance, fill = Species)) +
+  facet_wrap(~day) +
+  geom_bar(stat = "identity", position = "fill") +
+  theme_classic() +
+  scale_fill_manual(values=cbbPalette) +
+  labs(title = "",
+       x = "Treatments",
+       y = "Relative Abundance (%)") +
+  theme(axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 12, face = "bold"),
+        axis.title.y = element_text(size = 15, face = "bold"),
+        axis.title.x = element_text(size = 15, face = "bold"),
+        legend.text = element_text(size = 12),    # Adjust legend text size
+        legend.title = element_text(size = 15))     # Adjust legend title size 
 
+rel_abun_treatment
+```
+
+### Alpha diversity
 ```{r}
 # Estimate multiple richness measures at once
 alpha_diversity <- estimate_richness(ps.clean, measures = c("Shannon", "InvSimpson", "Observed"))
@@ -114,6 +145,7 @@ ps.clean@sam_data$richness <- alpha_diversity$Observed
 ps.clean@sam_data$even <- ps.clean@sam_data$shannon / log(ps.clean@sam_data$richness)
 ```
 
+### Prepare data for Analysis
 ```{r}
 # extract data from phyloseq object into a dataframe
 sample.df <- data.frame(ps.clean@sam_data)
@@ -121,64 +153,116 @@ sample.df <- data.frame(ps.clean@sam_data)
 sample.df$treatment <- factor(sample.df$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
 ```
 
-
-
-
-
-
-
+### Richness Visualization
 ```{r}
-# Shannon diversity by time*treatment interaction
-shan.treatment.time <- ggplot(sample.data.bac, aes(x = treatment, y = shannon, fill = treatment)) + 
+# Richness by treatment*time interaction
+richness.treatment.time <- ggplot(sample.df, aes(x = treatment, y = richness, fill = treatment)) +
   geom_boxplot() +
   #geom_jitter() + 
-  ylab("Shannon") + 
-  stat_compare_means(method = "") + 
+  ylab("Richness") + 
+  stat_compare_means(method = "anova") + 
   xlab("")+
   theme_bw() +
   facet_wrap(~day) +
+  scale_fill_manual(values=cbbPalette) +
   theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
         axis.text.y = element_text(size = 12),
         axis.title.y = element_text(size = 14, face = "bold"),
         axis.line = element_line(size = 0.6),
         legend.text = element_text(size = 12),    # Adjust legend text size
         legend.title = element_text(size = 16))     # Adjust legend title size
-shan.treatment.time
+
+richness.treatment.time
+```
+
+#### Richness analysis
+```{r}
+rich.trt.time <- aov(richness ~ treatment*day, data = sample.df)
+summary(rich.trt.time) #treatment=0.027, day=3.02e-05, inter=0.015
+
+# Since there is significant interaction, split data by day
+sample.df.d30 <- subset(sample.df, day == "DAY_30")
+sample.df.d60 <- subset(sample.df, day == "DAY_60")
+sample.df.d90 <- subset(sample.df, day == "DAY_90")
+
+rich.30 <- lm(richness ~ treatment, data = sample.df.d30)
+aov.rich.30 <- anova(rich.30) # 0.098
+print(aov.rich.30)
+
+rich.60 <- lm(richness ~ treatment, data = sample.df.d60)
+aov.rich.60 <- anova(rich.60) # 0.084
+print(aov.rich.60)
+
+rich.90 <- lm(richness ~ treatment, data = sample.df.d90)
+aov.rich.90 <- anova(rich.90) # 0.027
+print(aov.rich.90)
+
+lsmeans <- emmeans(rich.90, ~treatment) # fungicide effect within growthstage
+Results_lsmeans <- cld(lsmeans, alpha = 0.05, reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
+Results_lsmeans
 
 ```
 
+### Evenness Visualization
 ```{r}
-shan_trt_time <- aov(shannon ~ treatment*day, data = sample.data.bac)
-anova_table <- anova(shan_trt_time) 
-print(anova_table) #treatment=0.076, day=0.391, inter=0.928
-tukey_results <- TukeyHSD(shan_trt_time)
-print(tukey_results)
-```
-
-
-```{r}
-# fecal samples relative amount/treatment*time
-top20 <- names(sort(taxa_sums(physeq.no.chloro), decreasing=TRUE))[1:12]
-ps.top20 <- transform_sample_counts(physeq.no.chloro, function(OTU) OTU/sum(OTU))
-ps.top20 <- prune_taxa(top20, ps.top20)
-dat.dataframe <- psmelt(ps.top20)
-dat.agr <- aggregate(Abundance ~ treatment*day + Species, data = dat.dataframe, FUN = mean)
-rel_abun_treatment <-ggplot(dat.agr, aes(x = treatment, y = Abundance, fill = Phylum)) +
+# Richness by treatment*time interaction
+even.treatment.time <- ggplot(sample.df, aes(x = treatment, y = even, fill = treatment)) +
+  geom_boxplot() +
+  #geom_jitter() + 
+  ylab("Eveness") + 
+  xlab("")+
+  theme_bw() +
   facet_wrap(~day) +
-  geom_bar(stat = "identity", position = "fill") +
-  theme_classic() +
-  labs(title = "",
-       x = "Treatments",
-       y = "Relative Abundance") +
-  theme(axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5, hjust=0.5),
-        axis.text.y = element_text(size = 12, face = "bold"),
-        axis.title.y = element_text(size = 15, face = "bold"),
-        axis.title.x = element_text(size = 15, face = "bold"),
+  scale_fill_manual(values=cbbPalette) +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
+        axis.text.y = element_text(size = 12),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.line = element_line(size = 0.6),
         legend.text = element_text(size = 12),    # Adjust legend text size
-        legend.title = element_text(size = 15))     # Adjust legend title size 
+        legend.title = element_text(size = 16))     # Adjust legend title size
 
-rel_abun_treatment
+even.treatment.time
 ```
+
+#### Eveness analysis
+```{r}
+even.trt.time <- lm(even ~ treatment*day, data = sample.df)
+anova(even.trt.time) #treatment=0.088, day=0.126, inter=0.971
+
+```
+
+### Shannon Visualization
+```{r}
+# Shannon by treatment*time interaction
+shannon.treatment.time <- ggplot(sample.df, aes(x = treatment, y = shannon, fill = treatment)) +
+  geom_boxplot() +
+  #geom_jitter() + 
+  ylab("Shannon") + 
+  xlab("")+
+  theme_bw() +
+  facet_wrap(~day) +
+  scale_fill_manual(values=cbbPalette) +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
+        axis.text.y = element_text(size = 12),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.line = element_line(size = 0.6),
+        legend.text = element_text(size = 12),    # Adjust legend text size
+        legend.title = element_text(size = 16))     # Adjust legend title size
+
+shannon.treatment.time
+```
+
+
+
+
+```{r}
+
+shan.trt.time <- aov(shannon ~ treatment*day, data = sample.df)
+summary(shan.trt.time) #treatment=0.020, day=3.02e-05, inter=0.012
+
+```
+
+
 
 
 
