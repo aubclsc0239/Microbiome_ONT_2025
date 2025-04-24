@@ -57,27 +57,27 @@ fs::dir_tree()
 ```bash
 ├── Bash_Scripts
 │   ├── Data_Formatting
-│   │   ├── CSV_to_fasta.sh
+│   │   ├── CSV_to_fasta.sh # script to convert a csv to fasta file 
 │   │   ├── fasta.csv
-│   │   ├── fasta_file.fasta
-│   │   ├── species_only.txt
-│   │   └── species_replace.sh
+│   │   ├── fasta_file.fasta # 
+│   │   ├── species_only.txt # text file with taxa list only
+│   │   └── species_replace.sh # script to add sequence to taxa (this makes a fasta.csv)
 │   ├── Ref_Seq_Alignment
-│   │   ├── Align.sh
+│   │   ├── Align.sh # script to perform alignment
 │   │   ├── fasta.align
 │   │   └── fasta_file.fasta
 │   └── Phylogenetic_Tree
 │       ├── fasta.align
 │       ├── tree.nwk
-│       └── tree.sh
+│       └── tree.sh # script to build tree
 ├── Microbiome_ONT_2025.Rproj
 ├── R_data
-│   ├── OTU_table_16s.csv
-│   ├── Taxa_file.csv
-│   ├── fasta_file.fasta
-│   ├── metadata_test.csv
-│   └── tree.nwk
-├──rcode.Rmd
+│   ├── OTU_table_16s.csv # OTU table
+│   ├── Taxa_file.csv # taxa
+│   ├── fasta_file.fasta # fasta file
+│   ├── metadata_test.csv # metadata
+│   └── tree.nwk # tree file
+├──rcode.Rmd # R analysis
 ├── Plots
 │   ├── AbunFig.jpg
 │   ├── AbunFig.tiff
