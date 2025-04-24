@@ -24,7 +24,7 @@ phylogenetic tree using FastTree. Read about MAFFT [here](https://open.bioqueue.
 ### Data Formating
 
 - [Make a Ref_seq file](Bash_Scripts/Data_Formatting/species_replace.sh)
-- [Convert to a Fasta file](Bash_Scripts/Data_Formatting/CSV_to_fasta.sh)
+- [Convert CSV to a Fasta file](Bash_Scripts/Data_Formatting/CSV_to_fasta.sh)
 
 ### Alignemnt
 

@@ -3,7 +3,8 @@ title: "Microbiome"
 author: "Abdulmalik_Oladipupo"
 date: "2025-04-21"
 output: 
-   html_document:
+   md_document:
+     variant: gfm
      toc: true
 ---
 
@@ -110,7 +111,7 @@ median(sample_sums(ps.clean))
 
 #### Relative Abundance Plot
 ```{r}
-# fecal samples relative amount/treatment*time
+# fecal samples Relative Abundance/treatment*day
 top20 <- names(sort(taxa_sums(ps.clean), decreasing=TRUE))[1:10]
 ps.top20 <- transform_sample_counts(ps.clean, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
@@ -181,6 +182,7 @@ richness.treatment.time
 
 #### Richness analysis
 ```{r}
+
 rich.trt.time <- aov(richness ~ treatment*day, data = sample.df)
 summary(rich.trt.time) #treatment=0.027, day=3.02e-05, inter=0.015
 
@@ -189,6 +191,7 @@ sample.df.d30 <- subset(sample.df, day == "DAY_30")
 sample.df.d60 <- subset(sample.df, day == "DAY_60")
 sample.df.d90 <- subset(sample.df, day == "DAY_90")
 
+# run an lm to compare treatments at each time points
 rich.30 <- lm(richness ~ treatment, data = sample.df.d30)
 aov.rich.30 <- anova(rich.30) # 0.098
 print(aov.rich.30)
@@ -201,6 +204,7 @@ rich.90 <- lm(richness ~ treatment, data = sample.df.d90)
 aov.rich.90 <- anova(rich.90) # 0.027
 print(aov.rich.90)
 
+# perform pairwise comparison
 lsmeans <- emmeans(rich.90, ~treatment) # fungicide effect within growthstage
 Results_lsmeans <- cld(lsmeans, alpha = 0.05, reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
 Results_lsmeans
