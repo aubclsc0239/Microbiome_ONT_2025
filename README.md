@@ -23,16 +23,16 @@ f) Perform statistics on diversity metrices and make fancy plots for publication
 ## Links to analysis
 ## Data Formating
 
-- [Make a Ref_seq file](Bash_Script/Data_Formatting/Species_replace.sh)
-- [Convert to a Fasta file](Bash_Script/Data_Formatting/CSV_to_fasta.sh)
+- [Make a Ref_seq file](Bash_Scripts/Data_Formatting/Species_replace.sh)
+- [Convert to a Fasta file](Bash_Scripts/Data_Formatting/CSV_to_fasta.sh)
 
 ## Alignemnt
 
-- [Perform multiple alignment](Bash_Script/Ref_Seq_Alignment/Align.sh)
+- [Perform multiple alignment](Bash_Scripts/Ref_Seq_Alignment/Align.sh)
 
 ## Phylogentic tree
 
-- [Make a phylogenetic tree](Bash_Script/Phylogenetic_Tree/tree.sh)
+- [Make a phylogenetic tree](Bash_Scripts/Phylogenetic_Tree/tree.sh)
 
 ## Data Analysis
 
