@@ -440,7 +440,7 @@ median(sample_sums(ps.clean))
 #### Relative Abundance Plot
 
 ``` r
-# fecal samples relative amount/treatment*time
+# fecal samples Relative Abundance/treatment*day
 top20 <- names(sort(taxa_sums(ps.clean), decreasing=TRUE))[1:10]
 ps.top20 <- transform_sample_counts(ps.clean, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
@@ -554,6 +554,7 @@ sample.df.d30 <- subset(sample.df, day == "DAY_30")
 sample.df.d60 <- subset(sample.df, day == "DAY_60")
 sample.df.d90 <- subset(sample.df, day == "DAY_90")
 
+# run an lm to compare treatments at each time points
 rich.30 <- lm(richness ~ treatment, data = sample.df.d30)
 aov.rich.30 <- anova(rich.30) # 0.098
 print(aov.rich.30)
@@ -599,6 +600,7 @@ print(aov.rich.90)
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 ``` r
+# perform pairwise comparison
 lsmeans <- emmeans(rich.90, ~treatment) # fungicide effect within growthstage
 Results_lsmeans <- cld(lsmeans, alpha = 0.05, reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
 Results_lsmeans
