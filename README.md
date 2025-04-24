@@ -44,9 +44,9 @@ phylogenetic tree using FastTree. Read about MAFFT [here](https://open.bioqueue.
 
 See plots
 
-![Alpha diversity](Plots/AlphaFig.tiff)
+![Alpha diversity](Plots/AlphaFig.jpg)
 
-![Beta diversity](Plots/AbunFig.tiff)
+![Beta diversity](Plots/AbunFig.jpg)
 
 ## file tree
 
