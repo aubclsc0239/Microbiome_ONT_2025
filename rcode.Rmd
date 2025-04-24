@@ -283,11 +283,14 @@ AlphaFig <- ggarrange(richness.treatment.time,
 # Relative abundance
 AbunFig <- ggarrange(rel_abun_treatment, nrow = 1)
 
-# Save the plots to the "Plots" folder
+# Save the plots in high quality to the "Plots" folder
 ggsave("Plots/AlphaFig.tiff", plot = AlphaFig, dpi=300, width = 27, height = 23, units = "cm")
 ggsave("Plots/AbunFig.tiff", plot = AbunFig, dpi = 300, width = 32, height = 15, units = "cm")
-
-
+ 
+# Or save in low size file
+# Save the plots in high quality to the "Plots" folder
+ggsave("Plots/AlphaFig.jpg", plot = AlphaFig, dpi=300, width = 27, height = 23, units = "cm")
+ggsave("Plots/AbunFig.jpg", plot = AbunFig, dpi = 300, width = 32, height = 15, units = "cm")
 
 
 ```
