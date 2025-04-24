@@ -266,6 +266,13 @@ summary(shan.trt.time) #treatment=0.020, day=3.02e-05, inter=0.012
 ```
 ### Publication figure
 ```{r}
+
+# Create the "Plots" folder. This checks if the folder exist or not
+if (!dir.exists("Plots")) {
+  dir.create("Plots")
+}
+
+# Create your plot
 # Arrange Alpha diversity plots into a single figure
 AlphaFig <- ggarrange(richness.treatment.time, 
                      even.treatment.time, 
@@ -273,12 +280,12 @@ AlphaFig <- ggarrange(richness.treatment.time,
                      labels = "auto", 
                      nrow = 3, ncol = 1, 
                      common.legend = TRUE)
-
-ggsave("AlphaFig.tiff", dpi=300, width = 27, height = 23, units = "cm")
-
+# Relative abundance
 AbunFig <- ggarrange(rel_abun_treatment, nrow = 1)
-ggsave("AbunFig.tiff", dpi=300, width = 32, height = 15, units = "cm")
 
+# Save the plots to the "Plots" folder
+ggsave("Plots/AlphaFig.tiff", plot = AlphaFig, dpi=300, width = 27, height = 23, units = "cm")
+ggsave("Plots/AbunFig.tiff", plot = AbunFig, dpi = 300, width = 32, height = 15, units = "cm")
 
 
 
