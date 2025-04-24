@@ -23,7 +23,7 @@ f) Perform statistics on diversity metrices and make fancy plots for publication
 ## Links to analysis
 ## Data Formating
 
-- [Make a Ref_seq file](Bash_Scripts/Data_Formatting/Species_replace.sh)
+- [Make a Ref_seq file](Bash_Scripts/Data_Formatting/species_replace.sh)
 - [Convert to a Fasta file](Bash_Scripts/Data_Formatting/CSV_to_fasta.sh)
 
 ## Alignemnt
