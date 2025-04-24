@@ -1,7 +1,17 @@
-# Microbiome_ONT_2025
+# 16S rRNA Microbiome EPI2ME to Phyloseq
 
-# Challenge4 Demonstration Repository
-This is a microbiome repository to demnostarte the processing of 16S reads sequecned off Oxford Nanopore GridIon
+## Project description
+Since long reads technology has lower read quality than short reads, and several commercial pipelines or
+packages are not designed to handle long reads appropriately, I plan to integrate several analytical
+pipelines to process 16S read from ONT GridIon data. EPI2ME is an analytical pipeline designed for processing ONT reads.
+However, while this pipeline performs demultiplexing and primer removal steps, merging of reads, followed by
+taxonomic assignment and preliminary alpha diversity metrics, the software does not perform other intergative analysis
+such as phylogenetic analysis for beta diversity. This porject intend to process EPI2ME output further and integrate into Phyloseq for intended downline analysis such as differential abundance, functional pathway analysis, and flexibility in graph generation. 
+
+My proposed steps are highlighted
+below:
+
+
 
 ## Links to analysis
 
