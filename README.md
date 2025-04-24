@@ -34,7 +34,7 @@ phylogenetic tree using FastTree. Read about MAFFT [here](https://open.bioqueue.
 
 - [Make a phylogenetic tree](Bash_Scripts/Phylogenetic_Tree/tree.sh)
 
-### Data Analysis
+### Data Analysis in R
 
 - [Files needed for Phyloseq](R_data)
 
