@@ -10,6 +10,7 @@ such as phylogenetic analysis for beta diversity. This project intend to process
 
 ## My proposed steps are highlighted
 
+```
 a) Demultiplexed 16S reads from ONT GridIon has been processed for quality filtering and taxonomy assignment on EPI2ME. See EPI2ME documentation here 
 b) Output from EPI2ME includes a taxonomy file and an OTU table which can be downloaded as CSV for reformatting
 c) Depending on the database selected as reference on EPI2ME (Silva 138 or NCBI 16s database), download the selected database from EPI2ME output.
@@ -19,7 +20,7 @@ phylogenetic tree using FastTree.
 e) The taxonomy file, OTU table, fasta_file, tree, and metadata file will be read into R. Create an object using the Phyloseq package. See Phyloseq here.
 f) Perform statistics on diversity metrices and make fancy plots for publication using ggplot2. 
 
-
+```
 ## Links to analysis
 ## Data Formating
 
