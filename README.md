@@ -6,16 +6,41 @@ packages are not designed to handle long reads appropriately, I plan to integrat
 pipelines to process 16S read from ONT GridIon data. EPI2ME is an analytical pipeline designed for processing ONT reads.
 However, while this pipeline performs demultiplexing and primer removal steps, merging of reads, followed by
 taxonomic assignment and preliminary alpha diversity metrics, the software does not perform other intergative analysis
-such as phylogenetic analysis for beta diversity. This porject intend to process EPI2ME output further and integrate into Phyloseq for intended downline analysis such as differential abundance, functional pathway analysis, and flexibility in graph generation. 
+such as phylogenetic analysis for beta diversity. This project intend to process EPI2ME output further and integrate into Phyloseq for intended downline analysis such as differential abundance, functional pathway analysis, and flexibility in graph generation. 
 
-My proposed steps are highlighted
-below:
+## My proposed steps are highlighted
 
+a) Demultiplexed 16S reads from ONT GridIon has been processed for quality filtering and taxonomy assignment on EPI2ME. See EPI2ME documentation here 
+b) Output from EPI2ME includes a taxonomy file and an OTU table which can be downloaded as CSV for reformatting
+c) Depending on the database selected as reference on EPI2ME (Silva 138 or NCBI 16s database), download the selected database from EPI2ME output.
+d) Make a reference sequence file (fasta_file) for the identified taxa from EPI2ME
+d) The generated reference sequence will be aligned with MAFFT, using the aligned reads to make a
+phylogenetic tree using FastTree.
+e) The taxonomy file, OTU table, fasta_file, tree, and metadata file will be read into R. Create an object using the Phyloseq package. See Phyloseq here.
+f) Perform statistics on diversity metrices and make fancy plots for publication using ggplot2. 
 
 
 ## Links to analysis
+## Data Formating
 
-- [Challenge 4 Analysis](coding_challenge_4/Challenge4.md)
+- [Make a Ref_seq file](Bash_Script/Data_Formatting/Species_replace.sh)
+- [Convert to a Fasta file](Bash_Script/Data_Formatting/CSV_to_fasta.sh)
+
+## Alignemnt
+
+- [Perform multiple alignment](Bash_Script/Ref_Seq_Alignment/Align.sh)
+
+## Phylogentic tree
+
+- [Make a phylogenetic tree](Bash_Script/Phylogenetic_Tree/tree.sh)
+
+## Data Analysis
+
+- [Files needed for Phyloseq](R_data)
+
+- [Data Analysis in R](rcode.Rmd)
+
+
 
 ## file tree
 
