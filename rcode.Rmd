@@ -1,5 +1,5 @@
 ---
-title: "Microbiome"
+title: "16S rRNA Microbiome Analysis"
 author: "Abdulmalik_Oladipupo"
 date: "2025-04-21"
 output: 
@@ -9,7 +9,7 @@ output:
 ---
 
 ### Install and Load all required packages
-* Note: Some of these packages are not required at this stage of the analyses but has been included for subsequence analyses 
+
 ```{r setup}
 # Check and install missing packages only
 required_packages <- c(
