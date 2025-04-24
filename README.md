@@ -40,7 +40,13 @@ phylogenetic tree using FastTree. Read about MAFFT [here](https://open.bioqueue.
 
 - [Data Analysis in R](rcode.Rmd)
 
+### Figures
 
+See plots
+
+![Alpha diversity](Plots/AlphaFig.tiff)
+
+![Beta diversity](Plots/AbunFig.tiff)
 
 ## file tree
 
