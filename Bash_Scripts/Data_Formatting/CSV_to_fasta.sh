@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# this script was written to convert a formatted refSeq in CSV to a Fasta file for next step (alignment)
+# this script was written to convert a formatted refSeq fasta.csv to a Fasta file for next step (alignment)
 # this script take a refSeq (CSV) and output a fasta file which can be used for alignment
 
 # Specify the input CSV file and output FASTA file

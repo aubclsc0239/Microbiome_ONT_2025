@@ -1,9 +1,14 @@
 #!/bin/bash
 
+# This script is written to create a ref_seq file after Epi2me run by search for sequences of found species from NCBI database
+# This script takes the NCBI 18S/16S database as a reference file (sequences.csv)
+# The species list is made from Epi2me output
+# This script output a fasta.csv file with species and sequence to be used for alignment, then phylogenetic tree
+
 # Input files
 species_file="species_only.txt"
 sequence_file="sequences.csv"
-output_file="output_species_with_sequences.csv"
+output_file="fasta.csv"
 
 # Initialize the output file with headers
 echo "Species,Sequence" > "$output_file"

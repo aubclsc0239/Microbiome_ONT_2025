@@ -1,5 +1,6 @@
 # this command prompt was written to build a phylogenetic tree using Fasttree
-# terminal based
+# could be done on the terminal or submitted in the queue depending on data size
 # the command requires an aligned fasta file
 
-FastTree -nt nucleotide_alignment > tree
+module load FastTree
+FastTree -nt fasta_align > tree.nwk
