@@ -1,9 +1,9 @@
 # 16S rRNA Microbiome EPI2ME to Phyloseq
 
 ## Project description
-Since long reads technology has lower read quality than short reads, and several commercial pipelines or
+Since long reads technology has lower read quality than short reads, and several available pipelines or
 packages are not designed to handle long reads appropriately, I plan to integrate several analytical
-pipelines to process 16S read from ONT GridIon data. EPI2ME is an analytical pipeline designed for processing ONT reads.
+pipelines to process 16S read from Oxford Nanopore GridIon. *EPI2ME* is an analytical pipeline designed for processing ONT reads.
 However, while this pipeline performs demultiplexing and primer removal steps, merging of reads, followed by
 taxonomic assignment and preliminary alpha diversity metrics, the software does not perform other intergative analysis
 such as phylogenetic analysis for beta diversity. This project intend to process EPI2ME output further and integrate into Phyloseq for intended downline analysis such as differential abundance, functional pathway analysis, and flexibility in graph generation. 
