@@ -11,7 +11,7 @@ such as phylogenetic analysis for beta diversity. This project intend to process
 
 ## Highlights of Analysis
 
-* Demultiplexed 16S reads from ONT GridIon have poretech.com/epi2me-docs/quickstart/) 
+* Demultiplexed 16S reads from ONT GridIon have been quality filtered and classified into taxa using EPI2ME. [Read about EPI2ME here](poretech.com/epi2me-docs/quickstart/) 
 * Output from EPI2ME includes a taxonomy file and an OTU table which can be downloaded as CSV for reformatting. See correctly formatted [taxa file](https://github.com/aubclsc0239/Microbiome_ONT_2025/blob/main/R_data/Taxa_file.csv) and [OTU table](https://github.com/aubclsc0239/Microbiome_ONT_2025/blob/main/R_data/OTU_table_16s.csv).
 * Depending on the database selected as reference when running EPI2ME (Silva 138 or NCBI 16s database), download the appropiate database from EPI2ME output. *NOTE: the database is not included on this project due to large size.* This database file will be included in EPI2ME output).
 * Make a reference sequence file (fasta_file) for the identified taxa from EPI2ME
