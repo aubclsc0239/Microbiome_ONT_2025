@@ -48,11 +48,7 @@ See plots
 
 ![Beta diversity](Plots/AbunFig.jpg)
 
-## File tree
-
-```r
-fs::dir_tree()
-```
+### File tree
 
 ```bash
 ├── Bash_Scripts
