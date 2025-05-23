@@ -13,8 +13,8 @@ output:
 ```{r setup}
 # Check and install missing packages only
 required_packages <- c(
-    "vegan", "phyloseq", "Biostrings", "metagenomeSeq", 
-    "decontam", "indicspecies", "DESeq2", "ggpubr", "tidyverse", 
+    "vegan", "phyloseq", "Biostrings", "metagenomeSeq", "ANCOMBC",
+    "decontam", "indicspecies", "DESeq2", "ggpubr", "tidyverse", "picante", "nlme",
     "ggplot2", "dunn.test", "writexl", "pairwiseAdonis", "remotes", "emmeans", "multcompView", 
     "cluster", "devtools", "statmod", "gtools", "BiocStyle", "DECIPHER", "phangorn", "gridExtra"
 )
@@ -24,7 +24,7 @@ for (pkg in required_packages) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
         cat("Installing missing package:", pkg, "\n")
         if (pkg %in% c("vegan", "phyloseq", "Biostrings", "metagenomeSeq", 
-                       "decontam", "indicspecies", "DESeq2", "ggpubr", "BiocStyle", "DECIPHER", "phangorn")) {
+                       "decontam", "indicspecies", "DESeq2", "ggpubr", "BiocStyle", "DECIPHER", "phangorn","picante", "nlme")) {
             BiocManager::install(pkg, lib = "~/R/library")
         } else {
             install.packages(pkg, repos = "http://cran.us.r-project.org", lib = "~/R/library")
@@ -35,6 +35,8 @@ for (pkg in required_packages) {
 # Load libraries
 library("vegan")
 library("phyloseq")
+library(ANCOMBC)
+library("nlme")
 library("Biostrings")
 library("metagenomeSeq")
 library("decontam")
@@ -52,18 +54,22 @@ library("multcompView")
 library("pairwiseAdonis")
 library("cluster")
 library("devtools")
+library("picante")
+library("phangorn")
+library(car)
+
+
 ```
 
-### Set up color pallet to use through this analysis F0E442
+### Set up color pallet to use through this analysis
 ```{r}
 # color blind pallet
-cbbPalette <- c("#D55E00", "#8C6D3B", "#56B4E9", "#008000", "#000000", 
-                "#0072B2", "#009E73", "#CC79A7", "#F1A7B6", "#1F77B4", 
-                "#8C564B", "#2CA02C", "#FF7F0E", "#9467BD", "#E69F00")
+cbbPalette <- c("#56B4E9", "#8C6D3B", "#E69F00", "#008000", "#000000", 
+                "#D55E00", "#009E73", "#CC79A7", "#F1A7B6", "#1F77B4", 
+                "#8C564B", "#2CA02C", "#FF7F0E", "#9467BD", "#E69F00", "#D55E00")
 ```
 
 ### Load in all required formatted files from the HPC or formatted epi2me output. 
-
 ```{r}
 taxa <- read.csv("R_data/Taxa_file.csv", header = TRUE, row.names = 1, na.strings = "na")
 otu.table <- read.csv("R_data/OTU_table_16s.csv", na.strings = "na")
@@ -92,6 +98,7 @@ phy.tree <- phyloseq::read_tree(tree.read)
 
 phyloseq.data <- phyloseq(phy.tax, phy.OTU.table, phy.data, phy.fasta, phy.tree)
 phyloseq.data
+
 ```
 ### Samples quality control and read distribution
 
@@ -106,6 +113,22 @@ sum(sample_sums(ps.clean))
 mean(sample_sums(ps.clean))
 # median read
 median(sample_sums(ps.clean))
+
+# Normalize Sampling reads based on cumulative sum scaling (CSS normalization)
+MGS <- phyloseq_to_metagenomeSeq(ps.clean)
+p <- metagenomeSeq::cumNormStatFast(MGS)
+MGS <- metagenomeSeq::cumNorm(MGS, p =p)
+metagenomeSeq::normFactors(MGS) # exports the normalized factors for each sample
+norm.bacteria <- metagenomeSeq::MRcounts(MGS, norm = T)
+norm.bacteria.OTU <- phyloseq::otu_table(norm.bacteria, taxa_are_rows = TRUE)
+
+physeq.css <- phyloseq::phyloseq(norm.bacteria.OTU, phy.data, phy.tax, phy.fasta, phy.tree)
+
+# Save RDS files of each type of normalized reads for easy loading in the future and reproducibility 
+# Save an object to a file
+saveRDS(physeq.css, file = "Bacteria_CCF_EXP242301_12102024.rds")
+saveRDS(ps.clean, file = "Bacteria_CCF_nonnorm_12102024.rds")
+
 ```
 
 ### ANALYSIS AND VISUALIZATION
@@ -117,10 +140,10 @@ top20 <- names(sort(taxa_sums(ps.clean), decreasing=TRUE))[1:10]
 ps.top20 <- transform_sample_counts(ps.clean, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
 dat.dataframe <- psmelt(ps.top20)
-dat.agr <- aggregate(Abundance ~ treatment*day + Species + genus + Phylum, data = dat.dataframe, FUN = mean)
-dat.agr$treatment <- factor(dat.agr$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
-rel_abun_treatment <-ggplot(dat.agr, aes(x = treatment, y = Abundance, fill = Species)) +
-  facet_wrap(~day) +
+dat.agr <- aggregate(Abundance ~ Treatments*Time + Species + genus + Phylum, data = dat.dataframe, FUN = mean)
+dat.agr$Treatments <- factor(dat.agr$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+rel_abun_treatment <-ggplot(dat.agr, aes(x = Treatments, y = Abundance, fill = Species)) +
+  facet_wrap(~Time) +
   geom_bar(stat = "identity", position = "fill") +
   theme_classic() +
   scale_fill_manual(values=cbbPalette) +
@@ -149,34 +172,56 @@ ps.clean@sam_data$richness <- alpha_diversity$Observed
 
 # Compute evenness (Shannon / log(richness))
 ps.clean@sam_data$even <- ps.clean@sam_data$shannon / log(ps.clean@sam_data$richness)
+
+# extract data from phyloseq object into a dataframe
+sample.df <- data.frame(ps.clean@sam_data)
+
+# Faith's phylogenetic diversity
+otu <- ps.clean@otu_table %>%
+  as.data.frame()
+
+is.rooted(ps.clean@phy_tree)  # Should return TRUE or FALSE
+
+phy_tree_rooted <- midpoint(ps.clean@phy_tree)
+ps.diversity <- pd(t(otu), phy_tree_rooted, include.root = TRUE)
+ps.diversity$SampleID <- rownames(ps.diversity)
 ```
 
 #### Prepare data for Analysis
 ```{r}
-# extract data from phyloseq object into a dataframe
-sample.df <- data.frame(ps.clean@sam_data)
+
 # arrange order
-sample.df$treatment <- factor(sample.df$treatment, levels = c("BASAL", "YCW", "IFC4", "IFC4+YCW"))
+sample.df$Treatments <- factor(sample.df$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+ps.diversity.join <- left_join(ps.diversity, as.data.frame(ps.clean@sam_data), by = "SampleID")
+ps.diversity.join$Time <- factor(ps.diversity.join$Time, levels = c("DAY_30", "DAY_60", "DAY_90"))
+ps.diversity.join$Treatments <- factor(ps.diversity.join$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+
 ```
 
 #### Richness Visualization
 ```{r}
+
+
+compare_means(richness ~ Treatments, sample.df, group.by = "Time", method = "kruskal")
+compare_means(richness ~ Time, sample.df)
+
+
 # Richness by treatment*time interaction
-richness.treatment.time <- ggplot(sample.df, aes(x = treatment, y = richness, fill = treatment)) +
-  geom_boxplot() +
+richness.treatment.time <- ggplot(sample.df, aes(x = Time, y = richness, fill = Treatments)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
   #geom_jitter() + 
-  ylab("Richness") + 
-  stat_compare_means(method = "anova") + 
-  xlab("")+
-  theme_bw() +
-  facet_wrap(~day) +
+  ylab("Richness") +
+  xlab("Time points") +
+  theme_classic() +
+  #facet_wrap(~Time) +
   scale_fill_manual(values=cbbPalette) +
   theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
         axis.text.y = element_text(size = 12),
         axis.title.y = element_text(size = 14, face = "bold"),
+        axis.title.x = element_text(size = 14, face = "bold"),
         axis.line = element_line(size = 0.6),
-        legend.text = element_text(size = 12),    # Adjust legend text size
-        legend.title = element_text(size = 16))     # Adjust legend title size
+        legend.text = element_text(size = 11),    # Adjust legend text size
+        legend.title = element_text(size = 12))     # Adjust legend title size
 
 richness.treatment.time
 ```
@@ -184,29 +229,29 @@ richness.treatment.time
 #### Richness analysis
 ```{r}
 
-rich.trt.time <- aov(richness ~ treatment*day, data = sample.df)
-summary(rich.trt.time) #treatment=0.027, day=3.02e-05, inter=0.015
+rich.trt.time <- lm(richness ~ Treatments*Time, data = sample.df)
+anova(rich.trt.time) #treatment=0.027, day=3.02e-05, inter=0.015
 
 # Since there is significant interaction, split data by day
-sample.df.d30 <- subset(sample.df, day == "DAY_30")
-sample.df.d60 <- subset(sample.df, day == "DAY_60")
-sample.df.d90 <- subset(sample.df, day == "DAY_90")
+sample.df.d30 <- subset(sample.df, Time == "DAY_30")
+sample.df.d60 <- subset(sample.df, Time == "DAY_60")
+sample.df.d90 <- subset(sample.df, Time == "DAY_90")
 
 # run an lm to compare treatments at each time points
-rich.30 <- lm(richness ~ treatment, data = sample.df.d30)
+rich.30 <- lm(richness ~ Treatments, data = sample.df.d30)
 aov.rich.30 <- anova(rich.30) # 0.098
 print(aov.rich.30)
 
-rich.60 <- lm(richness ~ treatment, data = sample.df.d60)
+rich.60 <- lm(richness ~ Treatments, data = sample.df.d60)
 aov.rich.60 <- anova(rich.60) # 0.084
 print(aov.rich.60)
 
-rich.90 <- lm(richness ~ treatment, data = sample.df.d90)
+rich.90 <- lm(richness ~ Treatments, data = sample.df.d90)
 aov.rich.90 <- anova(rich.90) # 0.027
 print(aov.rich.90)
 
-# perform pairwise comparison
-lsmeans <- emmeans(rich.90, ~treatment) # fungicide effect within growthstage
+# perform pairwise comparison at 90 d
+lsmeans <- emmeans(rich.90, ~Treatments)
 Results_lsmeans <- cld(lsmeans, alpha = 0.05, reversed = TRUE, details = TRUE) # contrast with Tukey ajustment
 Results_lsmeans
 
@@ -214,49 +259,66 @@ Results_lsmeans
 
 #### Evenness Visualization
 ```{r}
+
+compare_means(even ~ Treatments, sample.df, group.by = "Time", method = "kruskal")
+compare_means(even ~ Time, sample.df)
+
 # Richness by treatment*time interaction
-even.treatment.time <- ggplot(sample.df, aes(x = treatment, y = even, fill = treatment)) +
-  geom_boxplot() +
+even.treatment.time <- ggplot(sample.df, aes(x = Time, y = even, fill = Treatments)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
   #geom_jitter() + 
   ylab("Eveness") + 
-  xlab("")+
-  theme_bw() +
-  facet_wrap(~day) +
+  xlab("Time points")+
+  theme_classic() +
+  #facet_wrap(~Time) +
   scale_fill_manual(values=cbbPalette) +
   theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
         axis.text.y = element_text(size = 12),
         axis.title.y = element_text(size = 14, face = "bold"),
+        axis.title.x = element_text(size = 14, face = "bold"),
         axis.line = element_line(size = 0.6),
-        legend.text = element_text(size = 12),    # Adjust legend text size
-        legend.title = element_text(size = 16))     # Adjust legend title size
+        legend.text = element_text(size = 11),    # Adjust legend text size
+        legend.title = element_text(size = 12))     # Adjust legend title size
 
 even.treatment.time
 ```
 
 #### Eveness analysis
 ```{r}
-even.trt.time <- lm(even ~ treatment*day, data = sample.df)
+even.trt.time <- lm(even ~ Treatments*Time, data = sample.df)
 anova(even.trt.time) #treatment=0.088, day=0.126, inter=0.971
+
+# Histogram
+hist(residuals(even.trt.time), main = "Histogram of Residuals")
+# Shapiro-Wilk Test (for normality)
+shapiro.test(residuals(even.trt.time))  #0.517
+# Levene’s Test (from car package)
+leveneTest(even ~ Treatments*Time, data = sample.df) #0.381
 
 ```
 
 #### Shannon Visualization
 ```{r}
+
+compare_means(shannon ~ Treatments, sample.df, group.by = "Time", method = "kruskal")
+compare_means(shannon ~ Time, sample.df)
+
 # Shannon by treatment*time interaction
-shannon.treatment.time <- ggplot(sample.df, aes(x = treatment, y = shannon, fill = treatment)) +
-  geom_boxplot() +
+shannon.treatment.time <- ggplot(sample.df, aes(x = Time, y = shannon, fill = Treatments)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
   #geom_jitter() + 
   ylab("Shannon") + 
-  xlab("")+
-  theme_bw() +
-  facet_wrap(~day) +
+  xlab("Time")+
+  theme_classic() +
+  #facet_wrap(~day) +
   scale_fill_manual(values=cbbPalette) +
   theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
         axis.text.y = element_text(size = 12),
         axis.title.y = element_text(size = 14, face = "bold"),
+        axis.title.x = element_text(size = 14, face = "bold"),
         axis.line = element_line(size = 0.6),
-        legend.text = element_text(size = 12),    # Adjust legend text size
-        legend.title = element_text(size = 16))     # Adjust legend title size
+        legend.text = element_text(size = 11),    # Adjust legend text size
+        legend.title = element_text(size = 12))     # Adjust legend title size
 
 shannon.treatment.time
 ```
@@ -266,10 +328,683 @@ shannon.treatment.time
 #### Shannon analysis
 ```{r}
 
-shan.trt.time <- aov(shannon ~ treatment*day, data = sample.df)
-summary(shan.trt.time) #treatment=0.020, day=3.02e-05, inter=0.012
+shan.trt.time <- lm(shannon ~ Treatments*Time, data = sample.df)
+anova(shan.trt.time) #treatment=0.076, day=0.039, inter=0.927
+
+# Histogram
+hist(residuals(shan.trt.time), main = "Histogram of Residuals")
+# Shapiro-Wilk Test (for normality)
+shapiro.test(residuals(shan.trt.time))  #0.179
+# Levene’s Test (from car package)
+leveneTest(shannon ~ Treatments*Time, data = sample.df) #0.277
+
+# perform pairwise comparison at 90 d
+shan.lsmeans <- emmeans(shan.trt.time, ~Time)
+shan.results_lsmeans <- cld(shan.lsmeans, alpha = 0.05, reversed = TRUE, details = TRUE)
+shan.results_lsmeans
+
 
 ```
+
+#### Faith's Phylogentic diversity
+```{r}
+compare_means(PD ~ Treatments, ps.diversity.join, group.by = "Time")
+compare_means(PD ~ Time, ps.diversity.join, method = "kruskal")
+
+# PD by treatment*time interaction
+pd.treatment.time <- ggplot(ps.diversity.join, aes(x = Time, y = shannon, fill = Treatments)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  #geom_jitter() + 
+  ylab("Faith's PD") + 
+  xlab("")+
+  theme_classic() +
+  #facet_wrap(~day) +
+  scale_fill_manual(values=cbbPalette) +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5, face = "bold"),
+        axis.text.y = element_text(size = 12),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.line = element_line(size = 0.6),
+        legend.text = element_text(size = 11),    # Adjust legend text size
+        legend.title = element_text(size = 12))     # Adjust legend title size
+
+pd.treatment.time
+
+```
+
+
+
+#### Faith PD analysis
+```{r}
+pd.trt.time <- lm(PD ~ Treatments*Time, data = ps.diversity.join)
+anova(pd.trt.time) #treatment=0.157, day=2.819e-05, inter=0.095
+
+# Histogram
+hist(residuals(pd.trt.time), main = "Histogram of Residuals")
+# Shapiro-Wilk Test (for normality)
+shapiro.test(residuals(pd.trt.time))  #0.465
+# Levene’s Test (from car package)
+leveneTest(PD ~ Treatments*Time, data = ps.diversity.join) #0.674
+
+# perform pairwise comparison at 90 d
+pd.lsmeans <- emmeans(pd.trt.time, ~Time)
+pd.results_lsmeans <- cld(shan.lsmeans, alpha = 0.05, reversed = TRUE, details = TRUE)
+pd.results_lsmeans
+
+```
+
+#### Beta Diversity (Bray)
+```{r}
+
+# split data by time
+phy30 <- physeq.css %>% subset_samples(Time == "DAY_30")
+phy60 <- physeq.css %>% subset_samples(Time == "DAY_60")
+phy90 <- physeq.css %>% subset_samples(Time == "DAY_90")
+
+# Principle coordinates analysis with Bray-Curtis distances
+set.seed(9000)
+ordination.pcoa <- ordinate(physeq.css, "PCoA", "bray") # calculate the resemblance and ordinate using PCoA
+ordination.pcoa$vectors # positions of your points on the pcoa graph
+ordination.pcoa$values #values to calculate the variance explained on each axis (dimension)
+
+ord.values.bray <- data.frame(ordination.pcoa$values)
+
+# percent variation
+variation.axis1.bray <- round(100*ord.values.bray$Relative_eig[[1]], 2)
+variation.axis2.bray <- round(100*ord.values.bray$Relative_eig[[2]], 2)
+
+pcoa <- plot_ordination(physeq.css, ordination = ordination.pcoa, type = "samples", color = "treatment") +
+  theme_classic() + 
+  scale_color_manual(values = cbbPalette)
+pcoa
+
+pcoa.data <- pcoa$data # taking the data to make a fancy plot
+pcoa.data$Treatments <- factor(pcoa.data$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+
+pcoa.plot <- ggplot(data = pcoa.data, aes(x = Axis.1, y = Axis.2, shape = Time, fill = Treatments)) + 
+  geom_point(alpha = 0.8, size = 3, aes(color = Treatments)) +
+  #stat_ellipse(aes(group = Time, color = Time), type = "t", linetype = "solid", linewidth = 0.6, alpha = 0.5) +
+  theme_bw() +
+  ylab(paste("PcoA2 -", variation.axis2.bray, "%")) + 
+  xlab(paste("PcoA1 -", variation.axis1.bray, "%")) +
+  scale_color_manual(values = cbbPalette) +
+  scale_fill_manual(values = cbbPalette) +  # Use scale_fill_manual for fill colors
+  #stat_ellipse(geom = "polygon", alpha = 0.05, linewidth = 0.5, aes(color = treatment))+
+  scale_shape_manual(values=c(21, 24, 23, 22)) +
+  #facet_wrap(~Time) +
+  #guides(fill=guide_legend(override.aes=list(shape=21))) +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 11),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.title.x = element_text(size = 14, face = "bold"))
+
+# PERMANOVA - testing for differences in centroids
+# split data by time
+phy30 <- physeq.css %>% subset_samples(Time == "DAY_30")
+phy60 <- physeq.css %>% subset_samples(Time == "DAY_60")
+phy90 <- physeq.css %>% subset_samples(Time == "DAY_90")
+
+# bray-curtis centriod comparison
+set.seed(2000)
+prok.dist.bray = phyloseq::distance(physeq.css, "bray") # create bray-curtis distance matrix
+
+result.bray <- adonis2(prok.dist.bray~Treatments*Time, as(sample_data(physeq.css), "data.frame"),  by = "terms") 
+result.bray #interaction model=0.809, treatment=0.318, day=0.001
+
+# pairwise comparison
+set.seed(2000)
+pairwise.adonis2(prok.dist.bray~Time, as(sample_data(physeq.css), "data.frame"), p.adjust.m = "bonferroni")
+# 30vs90 = 0.001 (); 30vs60 = 0.025; 90vTreatments# 30vs90 = 0.001; 30vs60 = 0.025; 90vs60 = 0.001
+```
+
+#### Beta Diversity (Weighted Unifrac)
+```{r}
+set.seed(9000)
+unifrac <- UniFrac(physeq.css, weighted = TRUE)
+ordination.unifrac.pcoa <- ordinate(physeq.css, "PCoA", distance = unifrac) # calculate the resemblance and ordinate using PCoA
+ordination.unifrac.pcoa$vectors # positions of your points on the pcoa graph
+ordination.unifrac.pcoa$values #values to calculate the variance explained on each axis (dimension)
+ord.values <- data.frame(ordination.unifrac.pcoa$values)
+
+# percent variation
+variation.axis1.uni <- round(100*ord.values$Relative_eig[[1]], 2)
+variation.axis2.uni <- round(100*ord.values$Relative_eig[[2]], 2)
+
+pcoa.unifrac <- plot_ordination(physeq.css, ordination = ordination.unifrac.pcoa, type = "samples", color = "Treatments") +
+  theme_bw()
+pcoa.unifrac
+
+unifrac.data <- pcoa.unifrac$data # taking the data to make a fancy plot
+unifrac.data$Treatments <- factor(unifrac.data$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+
+unifrac.plot <- ggplot(unifrac.data, aes(x = Axis.1, y = Axis.2, shape = Time, fill = Treatments)) +
+  geom_point(alpha = 0.8, size = 3, aes(color = Treatments)) +
+  theme_bw() +
+  ylab(paste("PcoA2 -", variation.axis2.uni, "%")) + 
+  xlab(paste("PcoA1 -", variation.axis1.uni, "%")) +
+  scale_color_manual(values = cbbPalette) +
+  scale_fill_manual(values = cbbPalette) +  # Use scale_fill_manual for fill colors
+  #stat_ellipse(geom = "polygon", alpha = 0.05, linewidth = 0.5, aes(color = Treatments))+
+  scale_shape_manual(values = c(21, 24, 23, 22)) +
+  #facet_wrap(~Time) +
+  #guides(fill = guide_legend(override.aes = list(shape = 21)))
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 11),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.title.x = element_text(size = 14, face = "bold"))
+
+unifrac.plot
+
+# Centriod comparison
+set.seed(2000)
+result.unifrac <- adonis2(unifrac~Treatments*Time, as(sample_data(physeq.css), "data.frame"), by = "terms")
+result.unifrac # interaction model=0.063, 0.001, day = 0.001
+
+unifrac_30 <- UniFrac(phy30, weighted = FALSE)
+unifrac_60 <- UniFrac(phy60, weighted = FALSE)
+unifrac_90 <- UniFrac(phy90, weighted = FALSE)
+pairwise.adonis2(unifrac_30~Treatments, as(sample_data(phy30), "data.frame"))
+pairwise.adonis2(unifrac_60~Treatments, as(sample_data(phy60), "data.frame"))
+pairwise.adonis2(unifrac_90~Treatments, as(sample_data(phy90), "data.frame"))
+pairwise.adonis2(unifrac~Time, as(sample_data(physeq.css), "data.frame"))
+
+
+```
+
+#### NMDS ####
+```{r}
+
+# Load necessary libraries
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+
+
+# Extract OTU table and metadata for each time point 
+otu.day30 <- as(otu_table(phy30), "matrix")
+if (taxa_are_rows(phy30)) otu.day30 <- t(otu.day30)
+meta.day30 <- as(sample_data(phy30), "data.frame")
+
+otu.day60 <- as(otu_table(phy60), "matrix")
+if (taxa_are_rows(phy60)) otu.day60 <- t(otu.day60)
+meta.day60 <- as(sample_data(phy60), "data.frame")
+
+otu.day90 <- as(otu_table(phy90), "matrix")
+if (taxa_are_rows(phy60)) otu.day90 <- t(otu.day90)
+meta.day90 <- as(sample_data(phy90), "data.frame")
+
+# Bray-Curtis distance and NMDS
+bray.day30 <- vegdist(otu.day30, method = "bray")
+nmds.day30 <- metaMDS(bray.day30, k = 2, trymax = 100)
+
+bray.day60 <- vegdist(otu.day60, method = "bray")
+nmds.day60 <- metaMDS(bray.day60, k = 2, trymax = 100)
+
+bray.day90 <- vegdist(otu.day90, method = "bray")
+nmds.day90 <- metaMDS(bray.day90, k = 2, trymax = 100)
+
+
+# Fit treatment group using envfit
+env.day30 <- envfit(nmds.day30, meta.day30$Treatments, permutations = 1000)
+env.day60 <- envfit(nmds.day60, meta.day60$Treatments, permutations = 1000)
+env.day90 <- envfit(nmds.day90, meta.day90$Treatments, permutations = 1000)
+
+
+# Prepare data for ggplot
+scores.day30 <- as.data.frame(scores(nmds.day30))
+scores.day30$SampleID <- rownames(scores.day30)
+scores.day30$Treatments <- meta.day30$Treatments
+
+scores.day60 <- as.data.frame(scores(nmds.day60))
+scores.day60$SampleID <- rownames(scores.day60)
+scores.day60$Treatments <- meta.day60$Treatments
+
+scores.day90 <- as.data.frame(scores(nmds.day90))
+scores.day90$SampleID <- rownames(scores.day90)
+scores.day90$Treatments <- meta.day90$Treatments
+
+
+# Plot NMDS using ggplot
+#30d
+scores.day30$Treatments <- factor(scores.day30$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+nmds.30 <- ggplot(scores.day30, aes(x = NMDS1, y = NMDS2, color = Treatments)) +
+  geom_point(size = 2, alpha = 0.9) +
+  theme_bw() +
+  #stat_ellipse(level = 0.68, linetype = "dotted") +
+  scale_color_manual(values = cbbPalette) +
+  labs(title = "DAY 30") +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 11),
+        axis.title.y = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 10, hjust = 0.5, face = "bold"))
+
+nmds.30
+
+#60d
+scores.day60$Treatments <- factor(scores.day60$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+nmds.60 <- ggplot(scores.day60, aes(x = NMDS1, y = NMDS2, color = Treatments)) +
+  geom_point(size = 2, alpha = 0.9) +
+  theme_bw() +
+ #stat_ellipse(level = 0.68, linetype = "dotted") +
+  scale_color_manual(values = cbbPalette) +
+  labs(title = "DAY 60") +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 11),
+        axis.title.y = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 10, hjust = 0.5, face = "bold"))
+
+nmds.60
+
+
+#90d
+scores.day90$Treatments <- factor(scores.day90$Treatments, levels = c("Control", "BG", "HSB", "HSB+BG"))
+nmds.90 <- ggplot(scores.day90, aes(x = NMDS1, y = NMDS2, color = Treatments)) +
+  geom_point(size = 2, alpha = 0.9) +
+  theme_bw() +
+  #stat_ellipse(level = 0.68, linetype = "dotted") +
+  scale_color_manual(values = cbbPalette) +
+  labs(title = "DAY 90") +
+  theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 11),
+        axis.title.y = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 10, hjust = 0.5, face = "bold"))
+
+nmds.90
+
+# Time comparison NMDS
+# Extract OTU table and metadata
+otu.day.time <- as(otu_table(physeq.css), "matrix")
+if (taxa_are_rows(physeq.css)) otu.day.time <- t(otu.day.time)
+meta.time <- as(sample_data(physeq.css), "data.frame")
+
+# Bray-Curtis distance and NMDS
+bray.time <- vegdist(otu.day.time, method = "bray")
+nmds.time <- metaMDS(bray.time, k = 2, trymax = 100)
+
+# Fit treatment group using envfit
+env.time <- envfit(nmds.time, meta.time$Time, permutations = 1000)
+
+# Prepare data for ggplot
+scores.time <- as.data.frame(scores(nmds.time))
+scores.time$SampleID <- rownames(scores.time)
+scores.time$Time <- meta.day90.time$Time
+
+# Plot NMDS using ggplot
+nmds.time <- ggplot(scores.time, aes(x = NMDS1, y = NMDS2, color = Time)) +
+  geom_point(size = 2, alpha = 0.9) +
+  theme_bw() +
+  #stat_ellipse(level = 0.68, linetype = "dotted") +
+  #scale_color_manual(values = cbbPalette) +
+  labs(title = "Time.points") +
+   theme(axis.text.x = element_text(size = 11, vjust = 0.5, hjust=0.5),
+        axis.text.y = element_text(size = 11),
+        axis.title.y = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 10, hjust = 0.5, face = "bold"))
+
+nmds.time
+```
+
+#### Differential Abundance analysis ###### 
+```{r}
+
+# load packages
+
+BiocManager::install("DESeq2")
+BiocManager::install("apeglm")
+library(apeglm)
+library(DESeq2)
+library(ggrepel)
+ibm.cbb <- c("#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000")
+tol.cbb <- c("#CC6677", "#117733", "#FE6100", "#88CCEE", "#DDCC77", "#332288", "#AA4499", "#882255")
+
+diffabund_30d <- ps.clean %>%
+  phyloseq::subset_samples(Time %in% c("DAY_30")) %>%
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+diffabund_60d <- ps.clean %>%
+  phyloseq::subset_samples(Time %in% c("DAY_60")) %>%
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+diffabund_90d <- ps.clean %>%
+  phyloseq::subset_samples(Time %in% c("DAY_90")) %>%
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+diffabund <- ps.clean %>%
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+
+# Day 30 treatments comparison
+sample_data(diffabund_30d)$Treatments <- factor(sample_data(diffabund_30d)$Treatments)
+sample_data(diffabund_30d)$Treatments <- relevel(sample_data(diffabund_30d)$Treatments, ref = "Control")
+
+diagdds = phyloseq_to_deseq2(diffabund_30d, ~Treatments)
+diagdds = DESeq(diagdds, test="Wald", fitType="parametric")
+
+
+# Control vs BM
+res.bm = results(diagdds, contrast = c("Treatments", "BM", "Control"), cooksCutoff = FALSE)
+resultsNames(diagdds)
+res.bm.shrunk <- lfcShrink(diagdds, coef = "Treatments_BM_vs_Control", type = "apeglm")
+
+head(res.bm.shrunk)
+#alpha = 0.5
+#sigtab.bm = res.bm.shrunk[which(res.bm.shrunk$padj < alpha), ]
+sigtab.bm = cbind(as(res.bm.shrunk, "data.frame"), as(tax_table(diffabund_30d)[rownames(res.bm.shrunk), ], "matrix"))
+
+volcano.30.bm <- ggplot(sigtab.bm, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(size = 3, alpha = 0.9) +
+  geom_text_repel(data = sigtab.bm[sigtab.bm$padj <= 0.001 & abs(sigtab.bm$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  labs(title = "Control-vs-BG") +
+   theme(plot.title = element_text(size = 12, hjust = 0.5, face = "bold")) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+  #geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "grey40") # ← These are your threshold lines
+
+volcano.30.bm
+
+
+# Control vs HSB
+res.hsb = results(diagdds, contrast = c("Treatments", "HSB", "Control"), cooksCutoff = FALSE)
+resultsNames(diagdds)
+res.hsb.shrunk <- lfcShrink(diagdds, coef = "Treatments_HSB_vs_Control", type = "apeglm")
+head(res.hsb.shrunk)
+
+sigtab.hsb = cbind(as(res.hsb.shrunk, "data.frame"), as(tax_table(diffabund_30d)[rownames(res.hsb.shrunk), ], "matrix"))
+
+volcano.30.hsb <- ggplot(sigtab.hsb, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.hsb[sigtab.hsb$padj <= 0.001 & abs(sigtab.hsb$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  labs(title = "Control-vs-HSB") +
+  theme(plot.title = element_text(size = 12, hjust = 0.5, face = "bold")) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+ 
+volcano.30.hsb
+
+
+# Control vs HSB.BM
+res.hsb.bm = results(diagdds, contrast = c("Treatments", "HSB+BM", "Control"), cooksCutoff = FALSE)
+res.hsb.bm.shrunk <- lfcShrink(diagdds, coef = "Treatments_HSB.BM_vs_Control", type = "apeglm")
+head(res.hsb.bm.shrunk)
+sigtab.hsb.bm = cbind(as(res.hsb.bm.shrunk, "data.frame"), as(tax_table(diffabund_30d)[rownames(res.hsb.bm.shrunk), ], "matrix"))
+
+volcano.30.hsb.bm <- ggplot(sigtab.hsb.bm, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.hsb.bm[sigtab.hsb.bm$padj <= 0.001 & abs(sigtab.hsb.bm$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  labs(title = "") +
+  theme(plot.title = element_text(size = 12, hjust = 0.5, face = "bold")) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.30.hsb.bm
+
+
+# Day 60 treatments comparison
+sample_data(diffabund_60d)$Treatments <- factor(sample_data(diffabund_60d)$Treatments)
+sample_data(diffabund_60d)$Treatments <- relevel(sample_data(diffabund_60d)$Treatments, ref = "Control")
+
+diagdds.60 = phyloseq_to_deseq2(diffabund_60d, ~Treatments)
+diagdds.60 = DESeq(diagdds.60, test="Wald", fitType="parametric")
+
+
+# Control vs BM
+res.bm.60 = results(diagdds.60, contrast = c("Treatments", "BM", "Control"), cooksCutoff = FALSE)
+res.bm.60.shrunk <- lfcShrink(diagdds.60, coef = "Treatments_BM_vs_Control", type = "apeglm")
+head(res.bm.60.shrunk)
+sigtab.bm.60 = cbind(as(res.bm.60.shrunk, "data.frame"), as(tax_table(diffabund_60d)[rownames(res.bm.60.shrunk), ], "matrix"))
+
+volcano.60.bm <- ggplot(sigtab.bm.60, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.bm.60[sigtab.bm.60$padj <= 0.001 & abs(sigtab.bm.60$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.60.bm
+
+
+# Control vs HSB
+res.hsb.60 = results(diagdds.60, contrast = c("Treatments", "HSB", "Control"), cooksCutoff = FALSE)
+res.hsb.60.shrunk <- lfcShrink(diagdds.60, coef = "Treatments_HSB_vs_Control", type = "apeglm")
+head(res.hsb.60.shrunk)
+sigtab.hsb.60 = cbind(as(res.hsb.60.shrunk, "data.frame"), as(tax_table(diffabund_60d)[rownames(res.hsb.60.shrunk), ], "matrix"))
+
+volcano.60.hsb <- ggplot(sigtab.hsb.60, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.hsb.60[sigtab.hsb.60$padj <= 0.001 & abs(sigtab.hsb.60$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.60.hsb
+
+
+# Control vs HSB.BM
+res.hsb.bm.60 = results(diagdds.60, contrast = c("Treatments", "HSB+BM", "Control"), cooksCutoff = FALSE)
+res.hsb.bm.60.shrunk <- lfcShrink(diagdds.60, coef = "Treatments_HSB.BM_vs_Control", type = "apeglm")
+head(res.hsb.bm.60.shrunk)
+sigtab.hsb.bm.60 = cbind(as(res.hsb.bm.60.shrunk, "data.frame"), as(tax_table(diffabund_60d)[rownames(res.hsb.bm.60.shrunk), ], "matrix"))
+
+volcano.60.hsb.bm <- ggplot(sigtab.hsb.bm.60, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.hsb.bm.60[sigtab.hsb.bm.60$padj <= 0.001 & abs(sigtab.hsb.bm.60$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.60.hsb.bm
+
+
+
+# Day 90 treatments comparison
+sample_data(diffabund_90d)$Treatments <- factor(sample_data(diffabund_90d)$Treatments)
+sample_data(diffabund_90d)$Treatments <- relevel(sample_data(diffabund_90d)$Treatments, ref = "Control")
+
+diagdds.90 = phyloseq_to_deseq2(diffabund_90d, ~Treatments)
+diagdds.90 = DESeq(diagdds.90, test="Wald", fitType="parametric")
+
+
+# Control vs BM
+res.bm.90 = results(diagdds.90, contrast = c("Treatments", "BM", "Control"), cooksCutoff = FALSE)
+res.bm.90.shrunk <- lfcShrink(diagdds.90, coef = "Treatments_BM_vs_Control", type = "apeglm")
+head(res.bm.90.shrunk)
+sigtab.bm.90 = cbind(as(head(res.bm.90.shrunk), "data.frame"), as(tax_table(diffabund_90d)[rownames(head(res.bm.90.shrunk)), ], "matrix"))
+
+volcano.90.bm <- ggplot(sigtab.bm.90, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.bm.90[sigtab.bm.90$padj <= 0.001 & abs(sigtab.bm.90$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.90.bm
+
+
+# Control vs HSB
+res.hsb.90 = results(diagdds.90, contrast = c("Treatments", "HSB", "Control"), cooksCutoff = FALSE)
+res.hsb.90.shrunk <- lfcShrink(diagdds.90, coef = "Treatments_HSB_vs_Control", type = "apeglm")
+head(res.hsb.90.shrunk)
+sigtab.hsb.90 = cbind(as(res.hsb.90.shrunk, "data.frame"), as(tax_table(diffabund_90d)[rownames(res.hsb.90.shrunk), ], "matrix"))
+
+volcano.90.hsb <- ggplot(sigtab.hsb.90, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point(alpha = 0.9) +
+  geom_text_repel(data = sigtab.hsb.90[sigtab.hsb.90$padj <= 0.001 & abs(sigtab.hsb.90$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.90.hsb
+
+
+# Control vs HSB.BM
+res.hsb.bm.90 = results(diagdds.90, contrast = c("Treatments", "HSB+BM", "Control"), cooksCutoff = FALSE)
+res.hsb.bm.90.shrunk <- lfcShrink(diagdds.90, coef = "Treatments_HSB.BM_vs_Control", type = "apeglm")
+head(res.hsb.90.shrunk)
+sigtab.hsb.bm.90 = cbind(as(res.hsb.bm.90.shrunk, "data.frame"), as(tax_table(diffabund_90d)[rownames(res.hsb.bm.90.shrunk), ], "matrix"))
+
+volcano.90.hsb.bm <- ggplot(sigtab.hsb.bm.90, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point() +
+  geom_text_repel(data = sigtab.hsb.bm.90[sigtab.hsb.bm.90$padj <= 0.001 & abs(sigtab.hsb.bm.90$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.90.hsb.bm
+
+
+# Time_point comparison
+sample_data(diffabund)$Time <- factor(sample_data(diffabund)$Time)
+sample_data(diffabund)$Time <- relevel(sample_data(diffabund)$Time, ref = "DAY_30")
+
+diagdds.time = phyloseq_to_deseq2(diffabund, ~Time)
+diagdds.time = DESeq(diagdds.time, test="Wald", fitType="parametric")
+
+# 30d vs 60d
+res.30.60 = results(diagdds.time, contrast = c("Time", "DAY_60", "DAY_30"), cooksCutoff = FALSE)
+res.30.60.shrunk <- lfcShrink(diagdds.time, coef = "Time_DAY_60_vs_DAY_30", type = "apeglm")
+head(res.30.60.shrunk)
+sigtab.30.60 = cbind(as(res.30.60.shrunk, "data.frame"), as(tax_table(diffabund)[rownames(res.30.60.shrunk), ], "matrix"))
+
+sigtab.30.60 <- sigtab.30.60[!is.na(sigtab.30.60$Phylum), ]
+sigtab.30.60$Phylum <- factor(sigtab.30.60$Phylum)
+volcano.30.60 <- ggplot(sigtab.30.60, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point() +
+  geom_text_repel(data = sigtab.30.60[sigtab.30.60$padj <= 0.001 & abs(sigtab.30.60$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb, na.translate = FALSE) +
+  ggtitle("30d-vs-60d volcano plot") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),  # <- centers and sizes the title
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.30.60
+
+# 30d vs 90d
+res.30.90 = results(diagdds.time, contrast = c("Time", "DAY_90", "DAY_30"), cooksCutoff = FALSE)
+res.30.90.shrunk <- lfcShrink(diagdds.time, coef = "Time_DAY_90_vs_DAY_30", type = "apeglm")
+head(res.30.90.shrunk)
+sigtab.30.90 = cbind(as(res.30.90.shrunk, "data.frame"), as(tax_table(diffabund)[rownames(res.30.90.shrunk), ], "matrix"))
+
+sigtab.30.90 <- sigtab.30.90[!is.na(sigtab.30.90$Phylum), ]
+sigtab.30.90$Phylum <- factor(sigtab.30.90$Phylum)
+
+volcano.30.90 <- ggplot(sigtab.30.90, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point() +
+  geom_text_repel(data = sigtab.30.90[sigtab.30.90$padj <= 0.001 & abs(sigtab.30.90$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb, na.translate = FALSE) +
+  ggtitle("30d-vs-90d volcano plot") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),  # <- centers and sizes the title
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  scale_shape_manual(values = c(20,24), name = "p <= 0.05") + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.30.90
+
+
+# 60d vs 90d
+sample_data(diffabund)$Time <- factor(sample_data(diffabund)$Time)
+sample_data(diffabund)$Time <- relevel(sample_data(diffabund)$Time, ref = "DAY_60")
+
+diagdds.time = phyloseq_to_deseq2(diffabund, ~Time)
+diagdds.time = DESeq(diagdds.time, test="Wald", fitType="parametric")
+
+res.60.90 = results(diagdds.time, contrast = c("Time", "DAY_90", "DAY_60"), cooksCutoff = FALSE)
+res.60.90.shrunk <- lfcShrink(diagdds.time, coef = "Time_DAY_90_vs_DAY_60", type = "apeglm")
+head(res.60.90.shrunk)
+sigtab.60.90 = cbind(as(res.60.90.shrunk, "data.frame"), as(tax_table(diffabund)[rownames(res.60.90.shrunk), ], "matrix"))
+
+sigtab.60.90 <- sigtab.60.90[!is.na(sigtab.60.90$Phylum), ]
+volcano.60.90 <- ggplot(sigtab.60.90, aes(x = log2FoldChange, y = -log10(padj), color = Phylum)) +
+  geom_point() +
+  geom_text_repel(data = sigtab.60.90[sigtab.60.90$padj <= 0.001 & abs(sigtab.60.90$log2FoldChange) >= 2,],
+                  aes(label = Label), size = 2.5) +
+  scale_color_manual(values = tol.cbb, na.translate = FALSE) +
+  ggtitle("60d-vs-90d volcano plot") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),  # <- centers and sizes the title
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+volcano.60.90
+
+
+```
+
+
+
+
+
+
+
+
+
 #### Publication figure
 ```{r}
 
@@ -281,18 +1016,71 @@ if (!dir.exists("Plots")) {
 # Create your plot
 # Arrange Alpha diversity plots into a single figure
 AlphaFig <- ggarrange(richness.treatment.time, 
-                     even.treatment.time, 
-                     shannon.treatment.time, 
+                     pd.treatment.time, 
+                     even.treatment.time,
+                     shannon.treatment.time,
                      labels = "auto", 
-                     nrow = 3, ncol = 1, 
-                     common.legend = TRUE)
+                     nrow = 2, ncol = 2, 
+                     common.legend = TRUE,
+                     legend = "right")
+
+AlphaFig2 <- ggarrange(richness.treatment.time, 
+                     even.treatment.time,
+                     labels = "auto", 
+                     nrow = 1, ncol = 2, 
+                     common.legend = TRUE,
+                     legend = "right")
+
 # Relative abundance
-AbunFig <- ggarrange(rel_abun_treatment, nrow = 1)
+AbunFig <- ggarrange(rel_abun_treatment, 
+                     labels = "c",
+                     font.label = list(size = 16, face = "bold", color = "black"))
+
+
+# Arrange Beta diversity plots into a single figure
+BetaFig <- ggarrange(pcoa.plot, 
+                     unifrac.plot, 
+                     labels = "auto", 
+                     nrow = 1, ncol = 2, 
+                     common.legend = TRUE,
+                     legend = "top")
+
+# Arrange NMDS plots into a single figure
+NMDSFig <- ggarrange(nmds.30, 
+                     nmds.60,
+                     nmds.90,
+                     labels = "auto", 
+                     nrow = 1, ncol = 3, 
+                     common.legend = TRUE,
+                     legend = "top")
+
+NMDSFig2 <- ggarrange(nmds.time, 
+                     labels = "d", 
+                     nrow = 1, ncol = 1, 
+                     legend = "right")
+
+
+# Arrange NMDS plots into a single figure
+DeseqFig <- ggarrange(volcano.30.60, 
+                     volcano.30.90,
+                     volcano.60.90,
+                     labels = "auto", 
+                     nrow = 1, ncol = 3, 
+                     common.legend = TRUE,
+                     legend = "top")
+
 
 # Save the plots in high quality to the "Plots" folder
-ggsave("Plots/AlphaFig.tiff", plot = AlphaFig, dpi=300, width = 27, height = 23, units = "cm")
-ggsave("Plots/AbunFig.tiff", plot = AbunFig, dpi = 300, width = 32, height = 15, units = "cm")
+ggsave("Plots/AlphaFig.tiff", plot = AlphaFig, dpi=300, width = 27, height = 20, units = "cm")
+ggsave("Plots/AlphaFig2.tiff", plot = AlphaFig2, dpi=300, width = 25, height = 10, units = "cm")
+ggsave("Plots/AbunFig.tiff", plot = AbunFig, dpi = 300, width = 33, height = 14, units = "cm")
+ggsave("Plots/BetaFig.tiff", plot = BetaFig, dpi=300, width = 25, height = 15, units = "cm")
+ggsave("Plots/NMDSFig.tiff", plot = NMDSFig, dpi=300, width = 25, height = 10, units = "cm")
+ggsave("Plots/NMDSFig2.tiff", plot = NMDSFig2, dpi=300, width = 12, height = 8, units = "cm")
+ggsave("Plots/DeseqFig.tiff", plot = DeseqFig, dpi=300, width = 33, height = 12, units = "cm")
  
+
+
 # Or save in low size file
 # Save the plots in high quality to the "Plots" folder
 ggsave("Plots/AlphaFig.jpg", plot = AlphaFig, dpi=300, width = 27, height = 23, units = "cm")
@@ -300,9 +1088,6 @@ ggsave("Plots/AbunFig.jpg", plot = AbunFig, dpi = 300, width = 32, height = 15, 
 
 
 ```
-
-
-
 
 
 
