@@ -47,10 +47,6 @@ See plots
 
 - [See figures here](Plots)
 
-![Alpha diversity](Plots/AlphaFig.jpg)
-
-![Beta diversity](Plots/AbunFig.jpg)
-
 ### File tree
 
 ```bash
