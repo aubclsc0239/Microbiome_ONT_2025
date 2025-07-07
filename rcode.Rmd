@@ -68,9 +68,6 @@ cbbPalette <- c("#56B4E9", "#8C6D3B", "#E69F00", "#008000", "#000000",
                 "#D55E00", "#9467BD", "#CC79A7", "#F1A7B6", "#1F77B4", 
                 "#8C564B", "#2CA02C", "#FF7F0E", "#009E73", "#E69F00", "#D55E00")
 
-cbbPalette <- c("#000080", "#8C6D3B", "#8B0000", "#008000", "#000000", 
-                "#D55E00", "#009E73", "#CC79A7", "#F1A7B6", "#1F77B4", 
-                "#8C564B", "#2CA02C", "#FF7F0E", "#9467BD", "#E69F00", "#D55E00")
 ```
 
 ### Load in all required formatted files from the HPC or formatted epi2me output. 
@@ -189,6 +186,7 @@ otu <- ps.clean@otu_table %>%
 
 is.rooted(ps.clean@phy_tree)  # Should return TRUE or FALSE
 
+# if FLASE, now root tree
 phy_tree_rooted <- midpoint(ps.clean@phy_tree)
 ps.diversity <- pd(t(otu), phy_tree_rooted, include.root = TRUE)
 ps.diversity$SampleID <- rownames(ps.diversity)
@@ -207,7 +205,6 @@ ps.diversity.join$Treatments <- factor(ps.diversity.join$Treatments, levels = c(
 
 #### Richness Visualization
 ```{r}
-
 
 compare_means(richness ~ Treatments, sample.df, group.by = "Time", method = "kruskal")
 compare_means(richness ~ Time, sample.df)
@@ -1032,13 +1029,6 @@ AlphaFig <- ggarrange(richness.treatment.time,
 
 AlphaFig2 <- ggarrange(richness.treatment.time, 
                      even.treatment.time,
-                     labels = "auto", 
-                     nrow = 1, ncol = 2, 
-                     common.legend = TRUE,
-                     legend = "right")
-
-AlphaFig2.wfhw <- ggarrange(richness.treatment.time, 
-                     even.treatment.time,
                      labels = c("b","c"), 
                      nrow = 1, ncol = 2, 
                      common.legend = TRUE,
@@ -1046,12 +1036,9 @@ AlphaFig2.wfhw <- ggarrange(richness.treatment.time,
 
 # Relative abundance
 AbunFig <- ggarrange(rel_abun_treatment, 
-                     labels = "c",
-                     font.label = list(size = 16, face = "bold", color = "black"))
-
-AbunFig.wfhw <- ggarrange(rel_abun_treatment, 
                      labels = "a",
                      font.label = list(size = 16, face = "bold", color = "black"))
+
 
 # Arrange Beta diversity plots into a single figure
 BetaFig <- ggarrange(pcoa.plot, 
@@ -1094,9 +1081,6 @@ ggsave("Plots/NMDSFig.tiff", plot = NMDSFig, dpi=300, width = 25, height = 10, u
 ggsave("Plots/NMDSFig2.tiff", plot = NMDSFig2, dpi=300, width = 12, height = 8, units = "cm")
 ggsave("Plots/DeseqFig.tiff", plot = DeseqFig, dpi=300, width = 27, height = 15, units = "cm")
  
-
-ggsave("Plots/AlphaFig2.wfhw.tiff", plot = AlphaFig2.wfhw, dpi=300, width = 27, height = 9, units = "cm")
-ggsave("Plots/AbunFig.wfhw.tiff", plot = AbunFig.wfhw, dpi = 300, width = 35, height = 12, units = "cm")
 
 
 # Or save in low size file
