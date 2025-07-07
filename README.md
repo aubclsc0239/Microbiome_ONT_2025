@@ -1,6 +1,8 @@
 # 16S rRNA Microbiome EPI2ME to Phyloseq
-
 ## Written by Abdulmalik A. Oladipupo
+
+[![DOI](https://zenodo.org/badge/940104074.svg)](https://doi.org/10.5281/zenodo.15832431)
+
 ## Project description
 Since long reads technology has lower read quality than short reads, and several available pipelines or
 packages are not designed to handle long reads appropriately, I plan to integrate several analytical
