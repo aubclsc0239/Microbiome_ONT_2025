@@ -45,8 +45,6 @@ phylogenetic tree using FastTree. Read about MAFFT [here](https://open.bioqueue.
 
 ### Figures
 
-See plots
-
 - [See figures here](Plots)
 
 ### File tree
@@ -82,3 +80,7 @@ See plots
 │   └── AlphaFig.tiff
 └── README.md
 ```
+
+### Citation
+
+Oladipupo, A. A. (2025). aubclsc0239/Catfish/microbiome-ONT-2025: (v1.0.1). Zenodo. https://doi.org/10.5281/zenodo.15832431
